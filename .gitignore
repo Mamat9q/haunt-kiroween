@@ -1,0 +1,14 @@
+# Dependencies / generated files
+node_modules/
+dist/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# NOTE: .kiro/ is DELIBERATELY NOT ignored.
+# Kiroween requires the /.kiro directory (specs, steering, agents, hooks)
+# to be committed at the repo root. Never add it here.

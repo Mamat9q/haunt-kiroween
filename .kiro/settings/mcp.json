@@ -1,0 +1,1 @@
+{"mcpServers":{"fetch":{"args":["-y","@modelcontextprotocol/server-fetch"],"autoApprove":["fetch"],"command":"npx","disabled":false,"env":{}},"playwright":{"args":["-y","@playwright/mcp@latest"],"autoApprove":["browser_navigate","browser_snapshot","browser_evaluate","browser_console_messages"],"command":"npx","disabled":false,"env":{}}}}

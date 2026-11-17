@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HAUNT — an AI-narrated haunted-house escape</title>
+<meta name="description" content="HAUNT: wake in a procedurally generated haunted manor, collect 3 relics, and escape before your sanity runs out — while the Warden narrates your every step. Kiroween 2026.">
+<link rel="stylesheet" href="css/haunt.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game-canvas" aria-label="Haunted manor game view"></canvas>
+  <div id="vignette"></div>
+  <div class="fog" aria-hidden="true"></div>
+  <div class="fog fog-2" aria-hidden="true"></div>
+
+  <!-- HUD -->
+  <header id="hud">
+    <div class="hud-box">
+      <div class="hud-label">Sanity</div>
+      <div class="bar"><i id="sanity-fill" style="width:100%"></i></div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">Lantern oil <span id="oil-num">100</span></div>
+      <div class="bar"><i id="oil-fill" style="width:100%"></i></div>
+    </div>
+    <div class="hud-box" id="relic-count">◆ Relics 0/3</div>
+    <div id="hud-right">
+      <div class="hud-box" id="timer">00:00.00</div>
+      <div class="hud-box" id="seed-label"></div>
+      <button class="icon-btn" id="btn-mute" title="Mute / unmute (M)" aria-label="Mute or unmute sound">🔊</button>
+      <button class="icon-btn" id="btn-settings" title="Settings" aria-label="Open settings">⚙️</button>
+      <button class="icon-btn" id="btn-pause" title="Pause (P / Esc)" aria-label="Pause game">⏸</button>
+    </div>
+  </header>
+
+  <div id="hint-bar" role="status"></div>
+  <div id="narrator"><span class="warden-name">— The Warden —</span><span id="narrator-text"></span></div>
+  <div id="toast" role="status"></div>
+
+  <!-- Mobile controls -->
+  <div id="dpad" aria-label="Movement pad">
+    <button class="up" data-dir="up" aria-label="Move up">▲</button>
+    <button class="left" data-dir="left" aria-label="Move left">◀</button>
+    <button class="down" data-dir="down" aria-label="Move down">▼</button>
+    <button class="right" data-dir="right" aria-label="Move right">▶</button>
+  </div>
+  <button id="btn-interact" aria-label="Interact">USE</button>
+
+  <!-- Title screen -->
+  <div class="overlay" id="menu-title">
+    <div class="menu">
+      <h1>HAUNT</h1>
+      <p class="tagline">You wake in a haunted manor. Collect the <b>3 relics</b>, avoid the Warden,
+        and escape before your sanity runs out. The Warden narrates your every step.</p>
+      <div class="field">
+        <label for="seed-input">Manor seed</label>
+        <input type="text" id="seed-input" placeholder="e.g. midnight-manor" autocomplete="off">
+        <button class="small" id="btn-random-seed" type="button">🎲 Random</button>
+        <button class="small" id="btn-daily" type="button">📅 Daily manor</button>
+      </div>
+      <div class="field">
+        <span class="hud-label">Difficulty</span>
+        <div class="diff-toggle" role="group" aria-label="Difficulty">
+          <button type="button" id="diff-normal" aria-pressed="true">Normal</button>
+          <button type="button" id="diff-hard" aria-pressed="false">Hard</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="primary" id="btn-start" type="button">Enter the manor</button>
+      </div>
+      <p class="best-line" id="title-best"></p>
+      <div class="controls">
+        <b>WASD / arrows</b> — move &nbsp;·&nbsp; <b>E / Space</b> — interact (relic, riddle door)<br>
+        <b>L</b> — lantern on/off (saves oil; darkness drains sanity) &nbsp;·&nbsp; <b>M</b> — mute<br>
+        <b>P / Esc</b> — pause &nbsp;·&nbsp; <b>1 / 2 / 3</b> — answer a riddle<br>
+        Candle-lit rooms restore sanity. Locked doors need keys. Riddle doors need the right answer.
+      </div>
+      <p class="muted-note">Fully playable with no setup — the offline Warden narrates by default.
+        Add your own free OpenRouter key in Settings for AI narration. Your key never leaves your browser.</p>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div class="overlay" id="menu-pause" hidden>
+    <div class="menu">
+      <h2>Paused</h2>
+      <p class="tagline">The manor waits. It is very good at waiting.</p>
+      <div class="row">
+        <button class="primary" id="btn-resume" type="button">Resume</button>
+        <button id="btn-restart" type="button">Restart manor</button>
+        <button id="btn-quit-title" type="button">Title screen</button>
+      </div>
+      <div class="row">
+        <button class="small" id="btn-copy-seed" type="button">🔗 Copy seed link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div class="overlay" id="menu-over" hidden>
+    <div class="menu">
+      <h2>Claimed</h2>
+      <p id="lose-reason">Your sanity shattered. The Warden claims you.</p>
+      <p class="best-line" id="lose-stats"></p>
+      <div class="row">
+        <button class="primary" id="btn-retry" type="button">Try again</button>
+        <button id="btn-over-title" type="button">Title screen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Victory -->
+  <div class="overlay" id="menu-win" hidden>
+    <div class="menu">
+      <h2>You Escaped!</h2>
+      <p id="win-stats"></p>
+      <p class="best-line" id="win-best"></p>
+      <div class="row">
+        <button class="primary" id="btn-again" type="button">Escape again</button>
+        <button id="btn-win-new" type="button">New manor</button>
+        <button id="btn-win-title" type="button">Title screen</button>
+      </div>
+      <div class="row">
+        <button class="small" id="btn-copy-seed-win" type="button">🔗 Copy seed link — challenge a friend</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Riddle modal -->
+  <div class="overlay" id="modal-riddle" hidden>
+    <div class="menu">
+      <h2>The Riddle Door</h2>
+      <p id="riddle-question"></p>
+      <div id="riddle-choices"></div>
+      <p class="muted-note">A wrong answer costs 5 sanity. <button class="small" id="btn-riddle-leave" type="button">Step away</button></p>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <aside id="settings-panel" hidden aria-label="Settings">
+    <h3>Settings</h3>
+    <p><b>AI narration (optional).</b> Paste your own free OpenRouter key to let the Warden
+      improvise with <code>meta-llama/llama-3.1-8b-instruct:free</code>. The key is stored
+      <b>only in this browser's localStorage</b> and is never sent anywhere except OpenRouter.
+      No key? The built-in offline Warden narrates instead — the game is identical.</p>
+    <input type="password" id="api-key-input" placeholder="sk-or-v1-…" autocomplete="off" aria-label="OpenRouter API key">
+    <div class="row">
+      <button class="small" id="btn-save-key" type="button">Save key</button>
+      <button class="small" id="btn-clear-key" type="button">Remove key</button>
+    </div>
+    <p id="key-status" class="muted-note"></p>
+    <div class="row">
+      <button class="small" id="btn-close-settings" type="button">Close</button>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import { Game, dailySeed, formatTime, getBestTime } from './js/game.js';
+import { createRenderer } from './js/render.js';
+import { HauntAudio } from './js/audio.js';
+import { loadStoredKey } from './js/narration.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('game-canvas');
+const renderer = createRenderer(canvas);
+const audio = new HauntAudio();
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const params = new URLSearchParams(location.search);
+const urlSeed = params.get('seed') || '';
+let difficulty = 'normal';
+let game = null;
+let lastFrame = performance.now();
+let toastTimer = null;
+let narrationToken = 0;
+
+const input = { up: false, down: false, left: false, right: false };
+
+function showToast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function setNarrator(text) {
+  $('narrator-text').textContent = text;
+}
+
+function hideAllOverlays() {
+  for (const id of ['menu-title', 'menu-pause', 'menu-over', 'menu-win', 'modal-riddle']) {
+    $(id).hidden = true;
+  }
+  $('settings-panel').hidden = true;
+}
+
+function seedLink(seed) {
+  const u = new URL(location.href);
+  u.searchParams.set('seed', seed);
+  return u.toString();
+}
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(okMsg);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    showToast(okMsg);
+  }
+}
+
+function refreshTitleBest() {
+  const seed = $('seed-input').value.trim() || 'manor';
+  const best = getBestTime(seed);
+  $('title-best').textContent = best === null
+    ? 'No escape recorded for this manor — yet.'
+    : `Best escape for this manor: ${formatTime(best)}`;
+}
+
+function newGame(seed, diff) {
+  game = new Game(seed, { difficulty: diff });
+  $('seed-label').textContent = `🌑 ${seed} · ${diff}`;
+  $('hint-bar').textContent = '';
+  setNarrator('');
+  updateHud();
+  return game;
+}
+
+function startGame() {
+  const seed = $('seed-input').value.trim() || `manor-${Math.floor(Math.random() * 1e6)}`;
+  $('seed-input').value = seed;
+  newGame(seed, difficulty);
+  hideAllOverlays();
+  game.start();
+  audio.ensure();
+  audio.start();
+  canvas.focus();
+}
+
+function updateHud() {
+  if (!game) return;
+  $('sanity-fill').style.width = `${game.sanity}%`;
+  $('sanity-fill').classList.toggle('low', game.sanity < 30);
+  $('oil-fill').style.width = `${game.oil}%`;
+  $('oil-num').textContent = Math.round(game.oil);
+  $('relic-count').textContent = `◆ Relics ${game.relicsGot}/${game.relicsTotal}`;
+  $('timer').textContent = formatTime(game.elapsed * 1000);
+  $('hint-bar').textContent = game.state === 'playing' ? game.hint : '';
+  $('btn-mute').textContent = audio.muted ? '🔇' : '🔊';
+}
+
+function handleEvents() {
+  if (!game) return;
+  for (const ev of game.drainEvents()) {
+    if (ev.type === 'narrate') {
+      const token = ++narrationToken;
+      setNarrator(ev.text);
+      // AI upgrade, non-blocking: replace the line if the Warden improvises one.
+      if (game.narrator.apiKey) {
+        game.narrator.narrate(ev.data?.event || 'enter_room', {
+          ...(ev.data?.ctx || {}),
+          relics: game.relicsGot,
+          sanity: Math.round(game.sanity),
+          oil: Math.round(game.oil),
+        }, (aiLine) => {
+          if (token === narrationToken) setNarrator(aiLine);
+        });
+      }
+    } else if (ev.type === 'spotted' || ev.type === 'contact' || ev.type === 'scare') {
+      audio.sting();
+      showToast(ev.text);
+    } else if (ev.type === 'win') {
+      $('win-stats').textContent = ev.text;
+      const best = getBestTime(game.seed);
+      $('win-best').textContent = best !== null ? `Best escape for this manor: ${formatTime(best)}` : '';
+      hideAllOverlays();
+      $('menu-win').hidden = false;
+    } else if (ev.type === 'lose') {
+      $('lose-reason').textContent = ev.text;
+      $('lose-stats').textContent = `Relics: ${game.relicsGot}/${game.relicsTotal} · Time survived: ${formatTime(game.elapsed * 1000)}`;
+      hideAllOverlays();
+      $('menu-over').hidden = false;
+    } else if (ev.text) {
+      showToast(ev.text);
+    }
+  }
+}
+
+function openRiddle(riddle) {
+  $('riddle-question').textContent = riddle.q;
+  const box = $('riddle-choices');
+  box.innerHTML = '';
+  riddle.choices.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = `${i + 1}. ${c}`;
+    b.addEventListener('click', () => answerRiddle(i));
+    box.appendChild(b);
+  });
+  $('modal-riddle').hidden = false;
+}
+
+function answerRiddle(i) {
+  if (!game) return;
+  game.answerRiddle(i);
+  $('modal-riddle').hidden = true;
+  handleEvents();
+  updateHud();
+}
+
+function doInteract() {
+  if (!game || game.state !== 'playing') return;
+  const res = game.interact();
+  if (res?.action === 'riddle') openRiddle(res.riddle);
+  handleEvents();
+  updateHud();
+}
+
+// ---------- main loop ----------
+function frame(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (game && (game.state === 'playing' || game.state === 'riddle')) {
+    game.update(dt, input);
+    handleEvents();
+    updateHud();
+    audio.setDanger(game.wardenDanger || 0);
+  }
+  if (game) {
+    renderer.render({
+      manor: game.manor,
+      player: game.player,
+      warden: game.warden,
+      explored: game.explored,
+      time: game.time,
+      lanternOn: game.lanternLit,
+      oil: game.oil,
+      channel: game.channel ? { active: true, progress: game.channel.progress } : null,
+      flash: game.flash,
+      reducedMotion,
+    });
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- input ----------
+const KEYMAP = {
+  KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down',
+  KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
+};
+
+window.addEventListener('keydown', (e) => {
+  audio.ensure();
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+  const dir = KEYMAP[e.code];
+  if (dir) {
+    input[dir] = true;
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'KeyE' || e.code === 'Space') { doInteract(); e.preventDefault(); }
+  else if (e.code === 'KeyL') { game?.toggleLantern(); showToast(game?.lanternOn ? 'Lantern lit.' : 'Lantern doused — the dark closes in.'); }
+  else if (e.code === 'KeyM') { audio.toggleMuted(); updateHud(); }
+  else if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (game?.state === 'riddle') { game.cancelRiddle(); $('modal-riddle').hidden = true; }
+    else if (game && (game.state === 'playing' || game.state === 'paused')) {
+      game.togglePause();
+      $('menu-pause').hidden = game.state !== 'paused';
+    }
+  } else if (game?.state === 'riddle' && ['Digit1', 'Digit2', 'Digit3'].includes(e.code)) {
+    answerRiddle(Number(e.code.slice(-1)) - 1);
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  const dir = KEYMAP[e.code];
+  if (dir) input[dir] = false;
+});
+
+window.addEventListener('pointerdown', () => { audio.ensure(); }, { once: true });
+
+// D-pad
+document.querySelectorAll('#dpad button').forEach((b) => {
+  const dir = b.dataset.dir;
+  const on = (e) => { e.preventDefault(); audio.ensure(); input[dir] = true; };
+  const off = (e) => { e.preventDefault(); input[dir] = false; };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointerleave', off);
+  b.addEventListener('pointercancel', off);
+});
+$('btn-interact').addEventListener('click', () => { audio.ensure(); doInteract(); });
+
+// ---------- buttons ----------
+$('btn-start').addEventListener('click', startGame);
+$('btn-random-seed').addEventListener('click', () => {
+  $('seed-input').value = `manor-${Math.floor(Math.random() * 1e6)}`;
+  refreshTitleBest();
+});
+$('btn-daily').addEventListener('click', () => {
+  $('seed-input').value = dailySeed();
+  refreshTitleBest();
+  showToast(`Daily manor: ${dailySeed()}`);
+});
+$('seed-input').addEventListener('input', refreshTitleBest);
+$('diff-normal').addEventListener('click', () => {
+  difficulty = 'normal';
+  $('diff-normal').setAttribute('aria-pressed', 'true');
+  $('diff-hard').setAttribute('aria-pressed', 'false');
+});
+$('diff-hard').addEventListener('click', () => {
+  difficulty = 'hard';
+  $('diff-hard').setAttribute('aria-pressed', 'true');
+  $('diff-normal').setAttribute('aria-pressed', 'false');
+});
+$('btn-resume').addEventListener('click', () => {
+  game?.togglePause();
+  $('menu-pause').hidden = true;
+});
+$('btn-restart').addEventListener('click', () => {
+  hideAllOverlays();
+  newGame(game.seed, difficulty);
+  game.start();
+});
+$('btn-quit-title').addEventListener('click', () => {
+  hideAllOverlays();
+  $('menu-title').hidden = false;
+  game = newGame($('seed-input').value.trim() || 'manor', difficulty);
+  refreshTitleBest();
+});
+$('btn-retry').addEventListener('click', () => {
+  hideAllOverlays();
+  newGame(game.seed, difficulty);
+  game.start();
+});
+$('btn-over-title').addEventListener('click', () => {
+  hideAllOverlays();
+  $('menu-title').hidden = false;
+  refreshTitleBest();
+});
+$('btn-again').addEventListener('click', () => {
+  hideAllOverlays();
+  newGame(game.seed, difficulty);
+  game.start();
+});
+$('btn-win-new').addEventListener('click', () => {
+  $('seed-input').value = `manor-${Math.floor(Math.random() * 1e6)}`;
+  hideAllOverlays();
+  newGame($('seed-input').value, difficulty);
+  game.start();
+});
+$('btn-win-title').addEventListener('click', () => {
+  hideAllOverlays();
+  $('menu-title').hidden = false;
+  refreshTitleBest();
+});
+$('btn-copy-seed').addEventListener('click', () => copyText(seedLink(game.seed), 'Seed link copied — challenge a friend!'));
+$('btn-copy-seed-win').addEventListener('click', () => copyText(seedLink(game.seed), 'Seed link copied — challenge a friend!'));
+$('btn-pause').addEventListener('click', () => {
+  if (game && (game.state === 'playing' || game.state === 'paused')) {
+    game.togglePause();
+    $('menu-pause').hidden = game.state !== 'paused';
+  }
+});
+$('btn-mute').addEventListener('click', () => { audio.ensure(); audio.toggleMuted(); updateHud(); });
+$('btn-riddle-leave').addEventListener('click', () => {
+  game?.cancelRiddle();
+  $('modal-riddle').hidden = true;
+});
+
+// Settings
+$('btn-settings').addEventListener('click', () => {
+  $('settings-panel').hidden = !$('settings-panel').hidden;
+  $('api-key-input').value = loadStoredKey();
+  $('key-status').textContent = loadStoredKey() ? 'A key is saved in this browser.' : 'No key saved — offline narration is active.';
+});
+$('btn-close-settings').addEventListener('click', () => { $('settings-panel').hidden = true; });
+$('btn-save-key').addEventListener('click', () => {
+  const key = $('api-key-input').value.trim();
+  if (!game) newGame($('seed-input').value.trim() || 'manor', difficulty);
+  game.narrator.setApiKey(key);
+  $('key-status').textContent = key ? 'Key saved. The Warden may now improvise.' : 'No key entered.';
+  showToast(key ? 'OpenRouter key saved (local only).' : 'No key entered.');
+});
+$('btn-clear-key').addEventListener('click', () => {
+  if (!game) newGame($('seed-input').value.trim() || 'manor', difficulty);
+  game.narrator.setApiKey('');
+  $('api-key-input').value = '';
+  $('key-status').textContent = 'Key removed — offline narration is active.';
+});
+
+// ---------- boot ----------
+window.addEventListener('resize', () => renderer.resize());
+renderer.resize();
+$('seed-input').value = urlSeed || dailySeed();
+if (urlSeed) showToast(`Manor seed: ${urlSeed}`);
+newGame($('seed-input').value, difficulty);
+refreshTitleBest();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
